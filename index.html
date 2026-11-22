@@ -12,7 +12,9 @@ html,body{height:100%;margin:0;position:fixed;inset:0;width:100%;overscroll-beha
 #app{display:flex;flex-direction:column;height:100dvh;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
 .bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:6px 8px;background:var(--panel)}
 .bar{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}.bar::-webkit-scrollbar{display:none}
-.bar.top{border-bottom:1px solid var(--edge)}.bar.bot{border-top:1px solid var(--edge)}
+.bar.top{border-bottom:1px solid var(--edge)}.bar.bot{border-top:1px solid var(--edge);flex-direction:column;align-items:stretch;gap:5px;overflow:visible;padding:5px 8px}
+.row{display:flex;gap:5px;align-items:center;overflow-x:auto;scrollbar-width:none}.row::-webkit-scrollbar{display:none}
+.row button{flex:1 0 auto;padding:6px 9px;min-height:42px;white-space:nowrap}.row .sw{flex:0 0 36px}
 button,select,label.btn{touch-action:manipulation;flex:0 0 auto;font:inherit;color:var(--txt);background:#243040;border:1px solid var(--edge);border-radius:8px;padding:8px 11px;min-height:44px;cursor:pointer}
 button:hover,label.btn:hover{background:#2e3d52}
 button.on{background:var(--hot);border-color:var(--hot);color:#1a1006;font-weight:600}
@@ -52,13 +54,14 @@ input[type=file]{display:none}
 const $=i=>document.getElementById(i),v=$('v'),c=$('c'),x=c.getContext('2d'),vp=$('vp'),st=$('stage');
 let fingerPan=false,vw=0,vh=0,sc=1,minSc=1,tx=0,ty=0,tool='hand',color='#ffd400',lw=5,shapes=[],cur=null,pan=null,last=null,la=null,lb=null,loop=false;
 const cnt={A:0,B:0},ptrs=new Map(),fps=30;
-const TOOLS=[['hand','Main'],['zone','Zoom zone'],['pen','Crayon'],['line','Ligne'],['arrow','Flèche'],['circle','Cercle'],['rect','Rectangle'],['pawnA','Pion A'],['pawnB','Pion B'],['text','Texte']];
+const TOOLS=[['hand','Main'],['zone','Zoom'],['pen','Crayon'],['line','Ligne'],['arrow','Flèche'],['pass','Passe'],['shot','Tir'],['circle','Cercle'],['rect','Rect.'],['pawnA','Pion A'],['pawnB','Pion B'],['text','Texte']];
 const COLORS=['#ffd400','#ff3b30','#2f7bff','#34c759','#ffffff','#000000'];
 const tb=$('tools');
-TOOLS.forEach(([k,l])=>{const b=document.createElement('button');b.textContent=l;b.dataset.t=k;b.onclick=()=>setTool(k);tb.appendChild(b)});
-tb.insertAdjacentHTML('beforeend','<span class="sep"></span>');
-COLORS.forEach(k=>{const b=document.createElement('button');b.className='sw';b.style.background=k;b.setAttribute('aria-label','Couleur '+k);b.dataset.c=k;b.onclick=()=>setColor(k);tb.appendChild(b)});
-tb.insertAdjacentHTML('beforeend','<input id="lw" type="range" min="2" max="14" value="5" aria-label="Épaisseur"><span class="sep"></span><button id="undo">Annuler</button><button id="clr">Tout effacer</button><button id="fit">Recentrer</button><button id="snap">Exporter / partager l’image</button><label class="chk"><input type="checkbox" id="hide" checked> Masquer en lecture</label><button id="fp" title="Le doigt déplace l’image, le stylet dessine">Doigt = déplacer</button>');
+const r1=document.createElement('div'),r2=document.createElement('div');r1.className=r2.className='row';tb.append(r1,r2);
+const TIPS={pass:'Passe : flèche en tirets',shot:'Tir : double trait avec flèche',arrow:'Flèche (tracez une courbe pour la courber)',zone:'Zoomer sur une zone'};
+TOOLS.forEach(([k,l])=>{const b=document.createElement('button');b.textContent=l;b.title=TIPS[k]||l;b.dataset.t=k;b.onclick=()=>setTool(k);r1.appendChild(b)});
+COLORS.forEach(k=>{const b=document.createElement('button');b.className='sw';b.style.background=k;b.setAttribute('aria-label','Couleur '+k);b.dataset.c=k;b.onclick=()=>setColor(k);r2.appendChild(b)});
+r2.insertAdjacentHTML('beforeend','<input id="lw" type="range" min="2" max="14" value="5" aria-label="Épaisseur"><button id="undo">Annuler</button><button id="clr">Effacer tout</button><button id="tgl" title="Afficher / masquer les dessins">Masquer dessins</button><button id="fit">Recentrer</button><button id="fp" title="Le doigt déplace l’image, le stylet dessine">Doigt = déplacer</button><button id="snap">Exporter</button>');
 function setTool(k){tool=k;[...tb.querySelectorAll('[data-t]')].forEach(b=>b.classList.toggle('on',b.dataset.t===k))}
 function setColor(k){color=k;[...tb.querySelectorAll('[data-c]')].forEach(b=>b.classList.toggle('on',b.dataset.c===k))}
 setTool('hand');setColor(color);
@@ -74,9 +77,10 @@ const fmt=t=>{t=t||0;return Math.floor(t/60)+':'+String(Math.floor(t%60)).padSta
 function tick(){if(vw){$('seek').value=v.currentTime;$('time').textContent=fmt(v.currentTime)+' / '+fmt(v.duration);if(loop&&la!=null&&lb!=null&&lb>la&&v.currentTime>=lb)v.currentTime=la}requestAnimationFrame(tick)}tick();
 $('seek').oninput=e=>v.currentTime=+e.target.value;
 $('play').onclick=()=>v.paused?v.play():v.pause();
-v.onplay=()=>{$('play').textContent='Pause';if($('hide').checked)c.style.visibility='hidden'};
-v.onpause=()=>{$('play').textContent='Lecture';c.style.visibility='visible'};
-$('hide').onchange=()=>{c.style.visibility=(!v.paused&&$('hide').checked)?'hidden':'visible'};
+v.onplay=()=>{$('play').textContent='Pause'};
+v.onpause=()=>{$('play').textContent='Lecture'};
+let showDraw=true;function setShow(b){showDraw=b;c.style.visibility=b?'visible':'hidden';$('tgl').textContent=b?'Masquer dessins':'Afficher dessins';$('tgl').classList.toggle('on',!b)}
+$('tgl').onclick=()=>setShow(!showDraw);
 $('spd').onchange=e=>v.playbackRate=+e.target.value;
 const step=d=>{v.pause();v.currentTime=Math.max(0,v.currentTime+d/fps)};
 $('prev').onclick=()=>step(-1);$('next').onclick=()=>step(1);
@@ -97,15 +101,15 @@ vp.onpointerdown=e=>{if(!vw)return;vp.setPointerCapture(e.pointerId);ptrs.set(e.
  if(ptrs.size>1){cur=null;pan=null;pinchInit();draw();return}
  const p=pos(e);
  if(tool==='hand'||(fingerPan&&e.pointerType==='touch')){pan={x:e.clientX,y:e.clientY};return}
- if(!v.paused)v.pause();
+ if(!v.paused)v.pause();if(!showDraw)setShow(true);
  if(tool==='pawnA'||tool==='pawnB'){const k=tool.slice(4);cnt[k]=cnt[k]%10+1;shapes.push({t:'pawn',a:p,k,n:cnt[k],r:34/sc});draw();return}
  if(tool==='text'){const s=prompt('Texte à écrire');if(s)shapes.push({t:'text',a:p,s,c:color,w:(lw*4+12)/sc});draw();return}
- cur={t:tool,a:p,b:p,pts:[p],c:color,w:lw*1.4/sc};draw()};
+ cur={t:tool,a:p,b:p,pts:[p],c:color,w:lw*1.4/sc};if(CURVED.includes(tool))fitCurve(cur);draw()};
 vp.onpointermove=e=>{if(!ptrs.has(e.pointerId))return;ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
  if(ptrs.size>1){const[a,b]=[...ptrs.values()],d=Math.hypot(a.x-b.x,a.y-b.y)||1,cx=(a.x+b.x)/2,cy=(a.y+b.y)/2;
   if(last){zoomAt(cx,cy,d/last.d);tx+=cx-last.cx;ty+=cy-last.cy;apply()}last={d,cx,cy};return}
  if(pan){tx+=e.clientX-pan.x;ty+=e.clientY-pan.y;pan={x:e.clientX,y:e.clientY};apply();return}
- if(cur){const p=pos(e);cur.b=p;if(cur.t==='pen')cur.pts.push(p);draw()}};
+ if(cur){const p=pos(e);cur.b=p;if(cur.t==='pen'||CURVED.includes(cur.t)){cur.pts.push(p);if(cur.t!=='pen')fitCurve(cur)}draw()}};
 function endPtr(e){ptrs.delete(e.pointerId);if(ptrs.size<2)last=null;pan=null;
  if(cur){const s=cur;cur=null;const d=Math.hypot(s.b.x-s.a.x,s.b.y-s.a.y)*sc;
   if(s.t==='zone'){const w=Math.abs(s.b.x-s.a.x),h=Math.abs(s.b.y-s.a.y);
@@ -113,12 +117,28 @@ function endPtr(e){ptrs.delete(e.pointerId);if(ptrs.size<2)last=null;pan=null;
   else if(s.t==='pen'?s.pts.length>2:d>4)shapes.push(s)}
  draw()}
 vp.onpointerup=endPtr;vp.onpointercancel=endPtr;
+const CURVED=['arrow','pass','shot'];
+function fitCurve(s){const P=s.pts,a=P[0],b=P[P.length-1];let L=0;const cum=[0];for(let i=1;i<P.length;i++){L+=Math.hypot(P[i].x-P[i-1].x,P[i].y-P[i-1].y);cum.push(L)}
+ let m=a;for(let i=1;i<P.length;i++)if(cum[i]>=L/2){const t=(L/2-cum[i-1])/((cum[i]-cum[i-1])||1);m={x:P[i-1].x+(P[i].x-P[i-1].x)*t,y:P[i-1].y+(P[i].y-P[i-1].y)*t};break}
+ const dx=b.x-a.x,dy=b.y-a.y,len=Math.hypot(dx,dy),mid={x:(a.x+b.x)/2,y:(a.y+b.y)/2};
+ const dev=len>1?Math.abs((m.x-a.x)*dy-(m.y-a.y)*dx)/len:0;
+ s.b=b;s.c=(dev<Math.max(.07*len,8/sc))?mid:{x:2*m.x-mid.x,y:2*m.y-mid.y}}
+function curved(s){if(!s.c)s.c={x:(s.a.x+s.b.x)/2,y:(s.a.y+s.b.y)/2};
+ const bz=t=>{const u=1-t;return{x:u*u*s.a.x+2*u*t*s.c.x+t*t*s.b.x,y:u*u*s.a.y+2*u*t*s.c.y+t*t*s.b.y}};
+ const P=[];for(let i=0;i<=48;i++)P.push(bz(i/48));
+ const shot=s.t==='shot',off=s.w*1.15,h=s.w*(shot?7:5);let acc=0,i=P.length-1;
+ while(i>0&&acc<h){acc+=Math.hypot(P[i].x-P[i-1].x,P[i].y-P[i-1].y);i--}
+ const q=P.slice(0,i+1),base=P[i];
+ x.lineWidth=shot?s.w*.8:s.w;
+ if(shot){for(const sg of[-1,1]){x.beginPath();q.forEach((p,k)=>{const n=q[Math.min(k+1,q.length-1)],o=q[Math.max(k-1,0)],tx=n.x-o.x,ty=n.y-o.y,l=Math.hypot(tx,ty)||1,px=p.x-ty/l*off*sg,py=p.y+tx/l*off*sg;k?x.lineTo(px,py):x.moveTo(px,py)});x.stroke()}}
+ else{if(s.t==='pass')x.setLineDash([s.w*2.4,s.w*2]);x.beginPath();q.forEach((p,k)=>k?x.lineTo(p.x,p.y):x.moveTo(p.x,p.y));x.stroke();x.setLineDash([])}
+ const dx=s.b.x-base.x,dy=s.b.y-base.y,l=Math.hypot(dx,dy)||1,hw=shot?Math.max(off*2.8,h*.42):h*.5,nx=-dy/l*hw,ny=dx/l*hw;
+ x.beginPath();x.moveTo(s.b.x,s.b.y);x.lineTo(base.x+nx,base.y+ny);x.lineTo(base.x-nx,base.y-ny);x.closePath();x.fill()}
 function paint(s){x.lineCap=x.lineJoin='round';x.strokeStyle=x.fillStyle=s.c;x.lineWidth=s.w;x.setLineDash([]);x.beginPath();
  switch(s.t){
  case'pen':s.pts.forEach((p,i)=>i?x.lineTo(p.x,p.y):x.moveTo(p.x,p.y));x.stroke();break;
  case'line':x.moveTo(s.a.x,s.a.y);x.lineTo(s.b.x,s.b.y);x.stroke();break;
- case'arrow':{const an=Math.atan2(s.b.y-s.a.y,s.b.x-s.a.x),h=s.w*5;x.moveTo(s.a.x,s.a.y);x.lineTo(s.b.x,s.b.y);x.stroke();x.beginPath();x.moveTo(s.b.x,s.b.y);
-  x.lineTo(s.b.x-h*Math.cos(an-.45),s.b.y-h*Math.sin(an-.45));x.lineTo(s.b.x-h*Math.cos(an+.45),s.b.y-h*Math.sin(an+.45));x.closePath();x.fill();break}
+ case'arrow':case'pass':case'shot':curved(s);break;
  case'circle':x.arc(s.a.x,s.a.y,Math.hypot(s.b.x-s.a.x,s.b.y-s.a.y),0,7);x.stroke();break;
  case'rect':x.strokeRect(s.a.x,s.a.y,s.b.x-s.a.x,s.b.y-s.a.y);break;
  case'zone':x.strokeStyle='#fff';x.setLineDash([s.w*3,s.w*2]);x.lineWidth=2/sc;x.strokeRect(s.a.x,s.a.y,s.b.x-s.a.x,s.b.y-s.a.y);break;
@@ -129,7 +149,7 @@ function draw(){x.clearRect(0,0,c.width,c.height);shapes.forEach(paint);if(cur)p
 $('snap').onclick=()=>{if(!vw)return;const r=vp.getBoundingClientRect();
  const x0=Math.max(0,-tx/sc),y0=Math.max(0,-ty/sc),x1=Math.min(vw,(r.width-tx)/sc),y1=Math.min(vh,(r.height-ty)/sc),w=x1-x0,h=y1-y0;
  const o=document.createElement('canvas');o.width=Math.round(w);o.height=Math.round(h);const g=o.getContext('2d');
- g.drawImage(v,x0,y0,w,h,0,0,o.width,o.height);g.drawImage(c,x0,y0,w,h,0,0,o.width,o.height);
+ g.drawImage(v,x0,y0,w,h,0,0,o.width,o.height);if(showDraw)g.drawImage(c,x0,y0,w,h,0,0,o.width,o.height);
  o.toBlob(async b=>{const name='coachboard_'+Math.round(v.currentTime*10)/10+'s.png',f=new File([b],name,{type:'image/png'});
   try{if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f],title:'Coachboard'});return}}catch(e){if(e.name==='AbortError')return}
   const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;a.click()},'image/png')};
