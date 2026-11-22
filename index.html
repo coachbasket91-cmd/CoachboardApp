@@ -62,7 +62,7 @@ const r1=document.createElement('div'),r2=document.createElement('div');r1.class
 const TIPS={pass:'Passe : flèche en tirets',shot:'Tir : double trait avec flèche',dribble:'Dribble : flèche en zigzag (courbe possible)',arrow:'Flèche (tracez une courbe pour la courber)',zone:'Zoomer sur une zone'};
 TOOLS.forEach(([k,l])=>{const b=document.createElement('button');b.textContent=l;b.title=TIPS[k]||l;b.dataset.t=k;b.onclick=()=>setTool(k);r1.appendChild(b)});
 COLORS.forEach(k=>{const b=document.createElement('button');b.className='sw';b.style.background=k;b.setAttribute('aria-label','Couleur '+k);b.dataset.c=k;b.onclick=()=>setColor(k);r2.appendChild(b)});
-r2.insertAdjacentHTML('beforeend','<input id="lw" type="range" min="2" max="14" value="5" aria-label="Épaisseur"><button id="undo">Annuler</button><button id="clr">Effacer tout</button><button id="tgl" title="Afficher / masquer les dessins">Masquer dessins</button><button id="anim" title="Les flèches suivent le mouvement du joueur">Suivi mvt</button><button id="endf" title="Fixer l’arrivée du dernier suivi à l’image affichée">Fin du suivi</button><button id="fit">Recentrer</button><button id="fp" title="Le doigt déplace l’image, le stylet dessine">Doigt = déplacer</button><button id="snap">Exporter</button>');
+r2.insertAdjacentHTML('beforeend','<input id="lw" type="range" min="2" max="14" value="5" aria-label="Épaisseur"><button id="undo">Annuler</button><button id="clr">Effacer tout</button><button id="tgl" title="Afficher / masquer les dessins">Masquer dessins</button><button id="auto" title="Les dessins s’ancrent sur le joueur et le suivent">Suivi auto</button><button id="run" title="Lancer le suivi des dessins tracés sur cette image">Suivre ▶</button><button id="fit">Recentrer</button><button id="fp" title="Le doigt déplace l’image, le stylet dessine">Doigt = déplacer</button><button id="snap">Exporter</button>');
 function setTool(k){tool=k;[...tb.querySelectorAll('[data-t]')].forEach(b=>b.classList.toggle('on',b.dataset.t===k))}
 function setColor(k){color=k;[...tb.querySelectorAll('[data-c]')].forEach(b=>b.classList.toggle('on',b.dataset.c===k))}
 setTool('hand');setColor(color);
@@ -75,7 +75,7 @@ $('file').onchange=e=>{const f=e.target.files[0];if(f){v.src=URL.createObjectURL
 v.onloadedmetadata=()=>{vw=v.videoWidth;vh=v.videoHeight;c.width=vw;c.height=vh;for(const el of[st,v,c]){el.style.width=vw+'px';el.style.height=vh+'px'}shapes=[];$('seek').max=v.duration;fit();draw()};
 window.onresize=fit;
 const fmt=t=>{t=t||0;return Math.floor(t/60)+':'+String(Math.floor(t%60)).padStart(2,'0')};
-function tick(){if(vw){if(v.currentTime!==lastT&&shapes.some(q=>q.anim)){lastT=v.currentTime;draw()}$('seek').value=v.currentTime;$('time').textContent=fmt(v.currentTime)+' / '+fmt(v.duration);if(loop&&la!=null&&lb!=null&&lb>la&&v.currentTime>=lb)v.currentTime=la}requestAnimationFrame(tick)}tick();
+function tick(){if(vw){if(v.currentTime!==lastT&&shapes.some(q=>q.tk)){lastT=v.currentTime;draw()}$('seek').value=v.currentTime;$('time').textContent=fmt(v.currentTime)+' / '+fmt(v.duration);if(loop&&la!=null&&lb!=null&&lb>la&&v.currentTime>=lb)v.currentTime=la}requestAnimationFrame(tick)}tick();
 $('seek').oninput=e=>v.currentTime=+e.target.value;
 $('play').onclick=()=>v.paused?v.play():v.pause();
 v.onplay=()=>{$('play').textContent='Pause'};
@@ -88,8 +88,8 @@ $('prev').onclick=()=>step(-1);$('next').onclick=()=>step(1);
 $('ba').onclick=()=>{la=v.currentTime;$('ba').classList.add('on')};
 $('bb').onclick=()=>{lb=v.currentTime;$('bb').classList.add('on')};
 $('bl').onclick=()=>{loop=!loop;$('bl').classList.toggle('on',loop);if(loop&&la!=null){v.currentTime=la;v.play()}};
-$('undo').onclick=()=>{shapes.pop();draw()};
-$('clr').onclick=()=>{if(!shapes.length||confirm('Effacer tous les dessins ?')){shapes=[];cnt.A=cnt.B=0;draw()}};
+$('undo').onclick=()=>{if(!tracking){shapes.pop();draw()}};
+$('clr').onclick=()=>{if(tracking)return;if(!shapes.length||confirm('Effacer tous les dessins ?')){shapes=[];cnt.A=cnt.B=0;draw()}};
 $('fit').onclick=fit;$('fp').onclick=e=>{fingerPan=!fingerPan;e.currentTarget.classList.toggle('on',fingerPan)};
 addEventListener('gesturestart',e=>e.preventDefault());
 addEventListener('keydown',e=>{if(e.target.tagName==='INPUT'&&e.target.type!=='range')return;
@@ -102,10 +102,11 @@ vp.onpointerdown=e=>{if(!vw)return;vp.setPointerCapture(e.pointerId);ptrs.set(e.
  if(ptrs.size>1){cur=null;pan=null;pinchInit();draw();return}
  const p=pos(e);
  if(tool==='hand'||(fingerPan&&e.pointerType==='touch')){pan={x:e.clientX,y:e.clientY};return}
+ if(tracking){toast('Suivi en cours : patientez ou touchez « Arrêter ».');return}
  if(!v.paused)v.pause();if(!showDraw)setShow(true);
- if(tool==='pawnA'||tool==='pawnB'){const k=tool.slice(4);cnt[k]=cnt[k]%10+1;shapes.push({t:'pawn',a:p,k,n:cnt[k],r:34/sc});draw();return}
- if(tool==='text'){const s=prompt('Texte à écrire');if(s)shapes.push({t:'text',a:p,s,c:color,w:(lw*4+12)/sc});draw();return}
- cur={t:tool,a:p,b:p,pts:[p],c:color,w:lw*1.4/sc};if(CURVED.includes(tool)){fitCurve(cur);if(animOn){cur.anim=true;cur.t0=v.currentTime}}draw()};
+ if(tool==='pawnA'||tool==='pawnB'){const k=tool.slice(4);cnt[k]=cnt[k]%10+1;addShape({t:'pawn',a:p,k,n:cnt[k],r:34/sc});draw();return}
+ if(tool==='text'){const s=prompt('Texte à écrire');if(s)addShape({t:'text',a:p,s,c:color,w:(lw*4+12)/sc});draw();return}
+ cur={t:tool,a:p,b:p,pts:[p],c:color,w:lw*1.4/sc};if(CURVED.includes(tool))fitCurve(cur);draw()};
 vp.onpointermove=e=>{if(!ptrs.has(e.pointerId))return;ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
  if(ptrs.size>1){const[a,b]=[...ptrs.values()],d=Math.hypot(a.x-b.x,a.y-b.y)||1,cx=(a.x+b.x)/2,cy=(a.y+b.y)/2;
   if(last){zoomAt(cx,cy,d/last.d);tx+=cx-last.cx;ty+=cy-last.cy;apply()}last={d,cx,cy};return}
@@ -115,20 +116,45 @@ function endPtr(e){ptrs.delete(e.pointerId);if(ptrs.size<2)last=null;pan=null;
  if(cur){const s=cur;cur=null;const d=Math.hypot(s.b.x-s.a.x,s.b.y-s.a.y)*sc;
   if(s.t==='zone'){const w=Math.abs(s.b.x-s.a.x),h=Math.abs(s.b.y-s.a.y);
    if(w*sc>18&&h*sc>18){const r=vp.getBoundingClientRect();sc=Math.min(r.width/w,r.height/h);tx=(r.width-w*sc)/2-Math.min(s.a.x,s.b.x)*sc;ty=(r.height-h*sc)/2-Math.min(s.a.y,s.b.y)*sc;apply()}setTool('hand')}
-  else if(s.t==='pen'?s.pts.length>2:d>4)shapes.push(s)}
+  else if(s.t==='pen'?s.pts.length>2:d>4)addShape(s)}
  draw()}
 vp.onpointerup=endPtr;vp.onpointercancel=endPtr;
 const CURVED=['arrow','pass','shot','dribble'];
-let animOn=false,lastT=-1,tt;
+let autoOn=false,tracking=false,stopReq=false,lastT=-1,tt;
 function toast(m){const e=$('toast');e.textContent=m;e.style.opacity=1;clearTimeout(tt);tt=setTimeout(()=>e.style.opacity=0,5000)}
-$('anim').onclick=e=>{animOn=!animOn;e.currentTarget.classList.toggle('on',animOn);toast(animOn?'Suivi activé : tracez la flèche au départ, avancez la vidéo jusqu’à l’arrivée du joueur, puis touchez « Fin du suivi ».':'Suivi désactivé : les flèches restent fixes.')};
-$('endf').onclick=()=>{let q=null;for(let i=shapes.length-1;i>=0;i--)if(shapes[i].anim){q=shapes[i];break}
- if(!q){toast('Aucune flèche avec suivi à régler.');return}
- if(v.currentTime<=q.t0+.05){toast('Avancez d’abord la vidéo jusqu’à l’arrivée du joueur.');return}
- q.t1=v.currentTime;draw();toast('Suivi réglé : '+(q.t1-q.t0).toFixed(1)+' s')};
-function animGeom(s){if(!s.anim)return{a:s.a,c:s.c,b:s.b};const t=v.currentTime,t0=s.t0,t1=s.t1||t0+2;
- if(t<t0-.04||t>=t1)return null;const p=Math.max(0,(t-t0)/(t1-t0)),u=1-p;
- return{a:{x:u*u*s.a.x+2*u*p*s.c.x+p*p*s.b.x,y:u*u*s.a.y+2*u*p*s.c.y+p*p*s.b.y},c:{x:s.c.x+(s.b.x-s.c.x)*p,y:s.c.y+(s.b.y-s.c.y)*p},b:s.b}}
+$('auto').onclick=e=>{autoOn=!autoOn;e.currentTarget.classList.toggle('on',autoOn);toast(autoOn?'Suivi auto activé : sur l’image de départ, tracez chaque mouvement en partant du joueur, puis touchez « Suivre ».':'Suivi auto désactivé : les dessins restent fixes.')};
+$('run').onclick=()=>runTrack();
+function anchors(s){if(s.t==='pass')return[s.a,s.b];if(s.t==='rect')return[{x:(s.a.x+s.b.x)/2,y:(s.a.y+s.b.y)/2}];return[s.a]}
+function addShape(s){if(autoOn)s.tk={t0:v.currentTime,an:anchors(s).map(p=>({x0:p.x,y0:p.y,ts:[],xs:[],ys:[]}))};shapes.push(s)}
+function off(an,t){const n=an.ts.length;if(!n)return{x:0,y:0};if(t<=an.ts[0])return{x:an.xs[0]-an.x0,y:an.ys[0]-an.y0};if(t>=an.ts[n-1])return{x:an.xs[n-1]-an.x0,y:an.ys[n-1]-an.y0};
+ let lo=0,hi=n-1;while(hi-lo>1){const m=(lo+hi)>>1;if(an.ts[m]<=t)lo=m;else hi=m}const f=(t-an.ts[lo])/(an.ts[hi]-an.ts[lo]||1);
+ return{x:an.xs[lo]+(an.xs[hi]-an.xs[lo])*f-an.x0,y:an.ys[lo]+(an.ys[hi]-an.ys[lo])*f-an.y0}}
+function animGeom(s){if(!s.tk)return{a:s.a,c:s.c,b:s.b};const t=v.currentTime;if(t<s.tk.t0-.04)return null;
+ const d0=off(s.tk.an[0],t),d1=s.tk.an[1]?off(s.tk.an[1],t):{x:0,y:0},a={x:s.a.x+d0.x,y:s.a.y+d0.y},b={x:s.b.x+d1.x,y:s.b.y+d1.y};
+ if(s.tk.an[0].ts.length>1&&Math.hypot(b.x-a.x,b.y-a.y)<s.w*7)return null;
+ return{a,b,c:{x:s.c.x+(d0.x+d1.x)/2,y:s.c.y+(d0.y+d1.y)/2}}}
+/* ---- suiveur : mise en correspondance de gabarit, image par image ---- */
+const FPS=30,TS=44,RS=34,K=.5,cv2=document.createElement('canvas'),cx2=cv2.getContext('2d',{willReadFrequently:true});
+function grab(cx,cy,half){const w=Math.max(2,Math.round(2*half*K));cv2.width=cv2.height=w;cx2.clearRect(0,0,w,w);cx2.drawImage(v,cx-half,cy-half,2*half,2*half,0,0,w,w);
+ const d=cx2.getImageData(0,0,w,w).data,g=new Float32Array(w*w);for(let i=0;i<g.length;i++)g[i]=.299*d[4*i]+.587*d[4*i+1]+.114*d[4*i+2];return{g,w}}
+function mk(an){const t=grab(an.x0,an.y0,TS/2);return{an,x:an.x0,y:an.y0,vx:0,vy:0,tpl:t.g,tw:t.w,lost:0,dead:false}}
+function trk(tr,t){const an=tr.an;if(!tr.dead){const px=Math.min(vw,Math.max(0,tr.x+tr.vx)),py=Math.min(vh,Math.max(0,tr.y+tr.vy)),half=TS/2+RS,S=grab(px,py,half),sw=S.w,tw=tr.tw,tp=tr.tpl,g=S.g;
+  let best=1e18,bx=0,by=0;
+  for(let yy=0;yy<=sw-tw;yy++)for(let xx=0;xx<=sw-tw;xx++){let sad=0;for(let j=0;j<tw&&sad<best;j++){const o=(yy+j)*sw+xx,q=j*tw;for(let i=0;i<tw;i++)sad+=Math.abs(g[o+i]-tp[q+i])}if(sad<best){best=sad;bx=xx;by=yy}}
+  if(best/(tw*tw)<34){const nx=px-half+(bx+tw/2)/K,ny=py-half+(by+tw/2)/K;tr.vx=.6*tr.vx+.4*(nx-tr.x);tr.vy=.6*tr.vy+.4*(ny-tr.y);tr.x=nx;tr.y=ny;tr.lost=0;
+   for(let j=0;j<tw;j++)for(let i=0;i<tw;i++){const k=j*tw+i;tp[k]=.88*tp[k]+.12*g[(by+j)*sw+bx+i]}}
+  else{tr.x=px;tr.y=py;tr.vx*=.8;tr.vy*=.8;if(++tr.lost>25)tr.dead=true}}
+ an.ts.push(t);an.xs.push(tr.x);an.ys.push(tr.y)}
+const seekTo=t=>new Promise(r=>{let d=0;const f=()=>{if(d)return;d=1;requestAnimationFrame(()=>requestAnimationFrame(r))};v.addEventListener('seeked',f,{once:true});setTimeout(f,1500);v.currentTime=t});
+async function runTrack(){if(tracking){stopReq=true;return}
+ const T=v.currentTime,list=shapes.filter(q=>q.tk&&!q.tk.done&&Math.abs(q.tk.t0-T)<.06);
+ if(!list.length){toast('Rien à suivre ici : activez « Suivi auto », tracez sur l’image de départ, puis touchez « Suivre ».');return}
+ tracking=true;stopReq=false;v.pause();$('run').textContent='Arrêter';$('run').classList.add('on');
+ const trs=[];list.forEach(q=>q.tk.an.forEach(an=>{an.ts=[T];an.xs=[an.x0];an.ys=[an.y0];trs.push(mk(an))}));
+ let t=T;const end=v.duration-.05;
+ while(!stopReq&&t+1/FPS<=end&&trs.some(q=>!q.dead)){t+=1/FPS;await seekTo(t);trs.forEach(q=>trk(q,v.currentTime));draw();toast('Suivi en cours : '+(t-T).toFixed(1)+' s — touchez « Arrêter » pour terminer')}
+ list.forEach(q=>q.tk.done=true);tracking=false;$('run').textContent='Suivre ▶';$('run').classList.remove('on');await seekTo(T);draw();
+ toast(trs.every(q=>q.dead)?'Joueur perdu : tracez depuis un joueur bien visible.':'Suivi terminé ('+(t-T).toFixed(1)+' s). Lancez la lecture : les dessins suivent.')}
 function fitCurve(s){const P=s.pts,a=P[0],b=P[P.length-1];let L=0;const cum=[0];for(let i=1;i<P.length;i++){L+=Math.hypot(P[i].x-P[i-1].x,P[i].y-P[i-1].y);cum.push(L)}
  let m=a;for(let i=1;i<P.length;i++)if(cum[i]>=L/2){const t=(L/2-cum[i-1])/((cum[i]-cum[i-1])||1);m={x:P[i-1].x+(P[i].x-P[i-1].x)*t,y:P[i-1].y+(P[i].y-P[i-1].y)*t};break}
  const dx=b.x-a.x,dy=b.y-a.y,len=Math.hypot(dx,dy),mid={x:(a.x+b.x)/2,y:(a.y+b.y)/2};
@@ -148,7 +174,8 @@ function curved(s){const G=animGeom(s);if(!G)return;
   else{if(s.t==='pass')x.setLineDash([s.w*2.4,s.w*2]);x.beginPath();Q.forEach((p,k)=>k?x.lineTo(p.x,p.y):x.moveTo(p.x,p.y));x.stroke();x.setLineDash([])}}
  const dx=G.b.x-base.x,dy=G.b.y-base.y,l=Math.hypot(dx,dy)||1,hw=shot?Math.max(off*2.8,h*.42):h*.5,nx=-dy/l*hw,ny=dx/l*hw;
  x.beginPath();x.moveTo(G.b.x,G.b.y);x.lineTo(base.x+nx,base.y+ny);x.lineTo(base.x-nx,base.y-ny);x.closePath();x.fill()}
-function paint(s){x.lineCap=x.lineJoin='round';x.strokeStyle=x.fillStyle=s.c;x.lineWidth=s.w;x.setLineDash([]);x.beginPath();
+function paint(s){if(s.tk&&!CURVED.includes(s.t)){if(v.currentTime<s.tk.t0-.04)return;const d=off(s.tk.an[0],v.currentTime);x.save();x.translate(d.x,d.y);paint0(s);x.restore();return}paint0(s)}
+function paint0(s){x.lineCap=x.lineJoin='round';x.strokeStyle=x.fillStyle=s.c;x.lineWidth=s.w;x.setLineDash([]);x.beginPath();
  switch(s.t){
  case'pen':s.pts.forEach((p,i)=>i?x.lineTo(p.x,p.y):x.moveTo(p.x,p.y));x.stroke();break;
  case'line':x.moveTo(s.a.x,s.a.y);x.lineTo(s.b.x,s.b.y);x.stroke();break;
