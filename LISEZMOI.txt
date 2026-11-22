@@ -1,0 +1,24 @@
+COACHBOARD VIDÉO : APPLICATION POUR iPAD ET ANDROID
+===================================================
+C'est une application web installable (PWA). Elle doit être hébergée une fois sur internet (gratuit), puis
+elle s'installe sur l'écran d'accueil et fonctionne ensuite SANS connexion.
+
+1) HÉBERGER (une seule fois, avec GitHub Pages)
+   a. Sur github.com : New repository, nom « coachboard-app », Public.
+   b. « uploading an existing file » : glissez TOUS les fichiers de ce dossier (index.html, manifest.json, sw.js, icon-*.png).
+   c. Settings > Pages > Source : « Deploy from a branch », branche main, dossier / (root), Save.
+   d. Après 1 à 2 minutes, l'adresse est : https://VOTRE-NOM.github.io/coachboard-app/
+
+2) INSTALLER
+   - iPad (Safari obligatoire) : ouvrez l'adresse > bouton Partager > « Sur l'écran d'accueil ».
+   - Redmi / Android (Chrome) : ouvrez l'adresse > menu ⋮ > « Installer l'application » (ou « Ajouter à l'écran d'accueil »).
+   Ouvrez l'application une fois avec du réseau : elle se met alors en mémoire pour le mode hors connexion.
+
+3) UTILISER
+   - « Ouvrir une vidéo » : choisissez le panorama dans Fichiers / Galerie. La vidéo n'est pas envoyée sur internet.
+   - Deux doigts : zoom et déplacement. « Zoom zone » : encadrez une zone pour y zoomer.
+   - « Doigt = déplacer » : avec un stylet (Apple Pencil), le doigt déplace l'image et le stylet dessine.
+   - « Exporter / partager l'image » : ouvre le partage (Photos, Messages, WhatsApp...) avec l'image zoomée et annotée.
+   - Tenez la tablette en paysage.
+
+MISE À JOUR : remplacez index.html sur GitHub, et changez « coachboard-v1 » en « coachboard-v2 » dans sw.js.
