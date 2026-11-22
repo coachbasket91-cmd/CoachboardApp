@@ -30,6 +30,7 @@ button:focus-visible,select:focus-visible,input:focus-visible,label.btn:focus-wi
 #stage{position:absolute;left:0;top:0;transform-origin:0 0}
 #v,#c{position:absolute;left:0;top:0}
 #c{pointer-events:none}
+#toast{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);background:#000c;color:#fff;padding:8px 14px;border-radius:8px;max-width:92%;text-align:center;opacity:0;transition:opacity .25s;pointer-events:none;z-index:5;font-size:14px}
 #empty{position:absolute;inset:0;display:flex;flex-direction:column;gap:10px;align-items:center;justify-content:center;text-align:center;color:var(--mute);padding:20px;pointer-events:none}
 #empty b{color:var(--txt);font-size:20px}
 input[type=file]{display:none}
@@ -47,21 +48,21 @@ input[type=file]{display:none}
   <span id="time">0:00 / 0:00</span>
  </div>
  <div id="vp"><div id="stage"><video id="v" playsinline webkit-playsinline preload="auto"></video><canvas id="c"></canvas></div>
-  <div id="empty"><b>Ouvrez votre vidéo panoramique</b><span>Puis zoomez, dessinez, placez des pions et exportez une image.</span></div></div>
+  <div id="toast"></div><div id="empty"><b>Ouvrez votre vidéo panoramique</b><span>Puis zoomez, dessinez, placez des pions et exportez une image.</span></div></div>
  <div class="bar bot" id="tools"></div>
 </div>
 <script>
 const $=i=>document.getElementById(i),v=$('v'),c=$('c'),x=c.getContext('2d'),vp=$('vp'),st=$('stage');
 let fingerPan=false,vw=0,vh=0,sc=1,minSc=1,tx=0,ty=0,tool='hand',color='#ffd400',lw=5,shapes=[],cur=null,pan=null,last=null,la=null,lb=null,loop=false;
 const cnt={A:0,B:0},ptrs=new Map(),fps=30;
-const TOOLS=[['hand','Main'],['zone','Zoom'],['pen','Crayon'],['line','Ligne'],['arrow','Flèche'],['pass','Passe'],['shot','Tir'],['circle','Cercle'],['rect','Rect.'],['pawnA','Pion A'],['pawnB','Pion B'],['text','Texte']];
+const TOOLS=[['hand','Main'],['zone','Zoom'],['pen','Crayon'],['line','Ligne'],['arrow','Flèche'],['pass','Passe'],['shot','Tir'],['dribble','Dribble'],['circle','Cercle'],['rect','Rect.'],['pawnA','Pion A'],['pawnB','Pion B'],['text','Texte']];
 const COLORS=['#ffd400','#ff3b30','#2f7bff','#34c759','#ffffff','#000000'];
 const tb=$('tools');
 const r1=document.createElement('div'),r2=document.createElement('div');r1.className=r2.className='row';tb.append(r1,r2);
-const TIPS={pass:'Passe : flèche en tirets',shot:'Tir : double trait avec flèche',arrow:'Flèche (tracez une courbe pour la courber)',zone:'Zoomer sur une zone'};
+const TIPS={pass:'Passe : flèche en tirets',shot:'Tir : double trait avec flèche',dribble:'Dribble : flèche en zigzag (courbe possible)',arrow:'Flèche (tracez une courbe pour la courber)',zone:'Zoomer sur une zone'};
 TOOLS.forEach(([k,l])=>{const b=document.createElement('button');b.textContent=l;b.title=TIPS[k]||l;b.dataset.t=k;b.onclick=()=>setTool(k);r1.appendChild(b)});
 COLORS.forEach(k=>{const b=document.createElement('button');b.className='sw';b.style.background=k;b.setAttribute('aria-label','Couleur '+k);b.dataset.c=k;b.onclick=()=>setColor(k);r2.appendChild(b)});
-r2.insertAdjacentHTML('beforeend','<input id="lw" type="range" min="2" max="14" value="5" aria-label="Épaisseur"><button id="undo">Annuler</button><button id="clr">Effacer tout</button><button id="tgl" title="Afficher / masquer les dessins">Masquer dessins</button><button id="fit">Recentrer</button><button id="fp" title="Le doigt déplace l’image, le stylet dessine">Doigt = déplacer</button><button id="snap">Exporter</button>');
+r2.insertAdjacentHTML('beforeend','<input id="lw" type="range" min="2" max="14" value="5" aria-label="Épaisseur"><button id="undo">Annuler</button><button id="clr">Effacer tout</button><button id="tgl" title="Afficher / masquer les dessins">Masquer dessins</button><button id="anim" title="Les flèches suivent le mouvement du joueur">Suivi mvt</button><button id="endf" title="Fixer l’arrivée du dernier suivi à l’image affichée">Fin du suivi</button><button id="fit">Recentrer</button><button id="fp" title="Le doigt déplace l’image, le stylet dessine">Doigt = déplacer</button><button id="snap">Exporter</button>');
 function setTool(k){tool=k;[...tb.querySelectorAll('[data-t]')].forEach(b=>b.classList.toggle('on',b.dataset.t===k))}
 function setColor(k){color=k;[...tb.querySelectorAll('[data-c]')].forEach(b=>b.classList.toggle('on',b.dataset.c===k))}
 setTool('hand');setColor(color);
@@ -74,7 +75,7 @@ $('file').onchange=e=>{const f=e.target.files[0];if(f){v.src=URL.createObjectURL
 v.onloadedmetadata=()=>{vw=v.videoWidth;vh=v.videoHeight;c.width=vw;c.height=vh;for(const el of[st,v,c]){el.style.width=vw+'px';el.style.height=vh+'px'}shapes=[];$('seek').max=v.duration;fit();draw()};
 window.onresize=fit;
 const fmt=t=>{t=t||0;return Math.floor(t/60)+':'+String(Math.floor(t%60)).padStart(2,'0')};
-function tick(){if(vw){$('seek').value=v.currentTime;$('time').textContent=fmt(v.currentTime)+' / '+fmt(v.duration);if(loop&&la!=null&&lb!=null&&lb>la&&v.currentTime>=lb)v.currentTime=la}requestAnimationFrame(tick)}tick();
+function tick(){if(vw){if(v.currentTime!==lastT&&shapes.some(q=>q.anim)){lastT=v.currentTime;draw()}$('seek').value=v.currentTime;$('time').textContent=fmt(v.currentTime)+' / '+fmt(v.duration);if(loop&&la!=null&&lb!=null&&lb>la&&v.currentTime>=lb)v.currentTime=la}requestAnimationFrame(tick)}tick();
 $('seek').oninput=e=>v.currentTime=+e.target.value;
 $('play').onclick=()=>v.paused?v.play():v.pause();
 v.onplay=()=>{$('play').textContent='Pause'};
@@ -104,7 +105,7 @@ vp.onpointerdown=e=>{if(!vw)return;vp.setPointerCapture(e.pointerId);ptrs.set(e.
  if(!v.paused)v.pause();if(!showDraw)setShow(true);
  if(tool==='pawnA'||tool==='pawnB'){const k=tool.slice(4);cnt[k]=cnt[k]%10+1;shapes.push({t:'pawn',a:p,k,n:cnt[k],r:34/sc});draw();return}
  if(tool==='text'){const s=prompt('Texte à écrire');if(s)shapes.push({t:'text',a:p,s,c:color,w:(lw*4+12)/sc});draw();return}
- cur={t:tool,a:p,b:p,pts:[p],c:color,w:lw*1.4/sc};if(CURVED.includes(tool))fitCurve(cur);draw()};
+ cur={t:tool,a:p,b:p,pts:[p],c:color,w:lw*1.4/sc};if(CURVED.includes(tool)){fitCurve(cur);if(animOn){cur.anim=true;cur.t0=v.currentTime}}draw()};
 vp.onpointermove=e=>{if(!ptrs.has(e.pointerId))return;ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
  if(ptrs.size>1){const[a,b]=[...ptrs.values()],d=Math.hypot(a.x-b.x,a.y-b.y)||1,cx=(a.x+b.x)/2,cy=(a.y+b.y)/2;
   if(last){zoomAt(cx,cy,d/last.d);tx+=cx-last.cx;ty+=cy-last.cy;apply()}last={d,cx,cy};return}
@@ -117,28 +118,41 @@ function endPtr(e){ptrs.delete(e.pointerId);if(ptrs.size<2)last=null;pan=null;
   else if(s.t==='pen'?s.pts.length>2:d>4)shapes.push(s)}
  draw()}
 vp.onpointerup=endPtr;vp.onpointercancel=endPtr;
-const CURVED=['arrow','pass','shot'];
+const CURVED=['arrow','pass','shot','dribble'];
+let animOn=false,lastT=-1,tt;
+function toast(m){const e=$('toast');e.textContent=m;e.style.opacity=1;clearTimeout(tt);tt=setTimeout(()=>e.style.opacity=0,5000)}
+$('anim').onclick=e=>{animOn=!animOn;e.currentTarget.classList.toggle('on',animOn);toast(animOn?'Suivi activé : tracez la flèche au départ, avancez la vidéo jusqu’à l’arrivée du joueur, puis touchez « Fin du suivi ».':'Suivi désactivé : les flèches restent fixes.')};
+$('endf').onclick=()=>{let q=null;for(let i=shapes.length-1;i>=0;i--)if(shapes[i].anim){q=shapes[i];break}
+ if(!q){toast('Aucune flèche avec suivi à régler.');return}
+ if(v.currentTime<=q.t0+.05){toast('Avancez d’abord la vidéo jusqu’à l’arrivée du joueur.');return}
+ q.t1=v.currentTime;draw();toast('Suivi réglé : '+(q.t1-q.t0).toFixed(1)+' s')};
+function animGeom(s){if(!s.anim)return{a:s.a,c:s.c,b:s.b};const t=v.currentTime,t0=s.t0,t1=s.t1||t0+2;
+ if(t<t0-.04||t>=t1)return null;const p=Math.max(0,(t-t0)/(t1-t0)),u=1-p;
+ return{a:{x:u*u*s.a.x+2*u*p*s.c.x+p*p*s.b.x,y:u*u*s.a.y+2*u*p*s.c.y+p*p*s.b.y},c:{x:s.c.x+(s.b.x-s.c.x)*p,y:s.c.y+(s.b.y-s.c.y)*p},b:s.b}}
 function fitCurve(s){const P=s.pts,a=P[0],b=P[P.length-1];let L=0;const cum=[0];for(let i=1;i<P.length;i++){L+=Math.hypot(P[i].x-P[i-1].x,P[i].y-P[i-1].y);cum.push(L)}
  let m=a;for(let i=1;i<P.length;i++)if(cum[i]>=L/2){const t=(L/2-cum[i-1])/((cum[i]-cum[i-1])||1);m={x:P[i-1].x+(P[i].x-P[i-1].x)*t,y:P[i-1].y+(P[i].y-P[i-1].y)*t};break}
  const dx=b.x-a.x,dy=b.y-a.y,len=Math.hypot(dx,dy),mid={x:(a.x+b.x)/2,y:(a.y+b.y)/2};
  const dev=len>1?Math.abs((m.x-a.x)*dy-(m.y-a.y)*dx)/len:0;
  s.b=b;s.c=(dev<Math.max(.07*len,8/sc))?mid:{x:2*m.x-mid.x,y:2*m.y-mid.y}}
-function curved(s){if(!s.c)s.c={x:(s.a.x+s.b.x)/2,y:(s.a.y+s.b.y)/2};
- const bz=t=>{const u=1-t;return{x:u*u*s.a.x+2*u*t*s.c.x+t*t*s.b.x,y:u*u*s.a.y+2*u*t*s.c.y+t*t*s.b.y}};
- const P=[];for(let i=0;i<=48;i++)P.push(bz(i/48));
- const shot=s.t==='shot',off=s.w*1.15,h=s.w*(shot?7:5);let acc=0,i=P.length-1;
- while(i>0&&acc<h){acc+=Math.hypot(P[i].x-P[i-1].x,P[i].y-P[i-1].y);i--}
- const q=P.slice(0,i+1),base=P[i];
- x.lineWidth=shot?s.w*.8:s.w;
- if(shot){for(const sg of[-1,1]){x.beginPath();q.forEach((p,k)=>{const n=q[Math.min(k+1,q.length-1)],o=q[Math.max(k-1,0)],tx=n.x-o.x,ty=n.y-o.y,l=Math.hypot(tx,ty)||1,px=p.x-ty/l*off*sg,py=p.y+tx/l*off*sg;k?x.lineTo(px,py):x.moveTo(px,py)});x.stroke()}}
- else{if(s.t==='pass')x.setLineDash([s.w*2.4,s.w*2]);x.beginPath();q.forEach((p,k)=>k?x.lineTo(p.x,p.y):x.moveTo(p.x,p.y));x.stroke();x.setLineDash([])}
- const dx=s.b.x-base.x,dy=s.b.y-base.y,l=Math.hypot(dx,dy)||1,hw=shot?Math.max(off*2.8,h*.42):h*.5,nx=-dy/l*hw,ny=dx/l*hw;
- x.beginPath();x.moveTo(s.b.x,s.b.y);x.lineTo(base.x+nx,base.y+ny);x.lineTo(base.x-nx,base.y-ny);x.closePath();x.fill()}
+function curved(s){const G=animGeom(s);if(!G)return;
+ const bz=t=>{const u=1-t;return{x:u*u*G.a.x+2*u*t*G.c.x+t*t*G.b.x,y:u*u*G.a.y+2*u*t*G.c.y+t*t*G.b.y}};
+ const P=[];for(let i=0;i<=120;i++)P.push(bz(i/120));
+ const cum=[0];for(let i=1;i<P.length;i++)cum.push(cum[i-1]+Math.hypot(P[i].x-P[i-1].x,P[i].y-P[i-1].y));
+ const tot=cum[cum.length-1],shot=s.t==='shot',dr=s.t==='dribble',off=s.w*1.15,h=Math.min(s.w*(shot?7:dr?6:5),tot*.9);
+ const at=d=>{d=Math.max(0,Math.min(tot,d));let i=1;while(i<cum.length-1&&cum[i]<d)i++;const t=(d-cum[i-1])/((cum[i]-cum[i-1])||1),p=P[i-1],q=P[i],l=Math.hypot(q.x-p.x,q.y-p.y)||1;return{x:p.x+(q.x-p.x)*t,y:p.y+(q.y-p.y)*t,nx:-(q.y-p.y)/l,ny:(q.x-p.x)/l}};
+ const sb=tot-h,base=at(sb);x.lineWidth=shot?s.w*.8:s.w;
+ if(dr){const amp=s.w*1.7,step=s.w*3,V=[];for(let k=0;;k++){const d=sb-k*step;if(d<=0)break;const p=at(d),sg=k?(k%2?1:-1):0;V.push({x:p.x+p.nx*amp*sg,y:p.y+p.ny*amp*sg})}
+  V.push(at(0));V.reverse();x.beginPath();V.forEach((p,k)=>k?x.lineTo(p.x,p.y):x.moveTo(p.x,p.y));x.stroke()}
+ else{const Q=[];for(let i=0;i<P.length;i++)if(cum[i]<sb)Q.push(P[i]);Q.push(base);
+  if(shot){for(const sg of[-1,1]){x.beginPath();Q.forEach((p,k)=>{const n=Q[Math.min(k+1,Q.length-1)],o=Q[Math.max(k-1,0)],tx=n.x-o.x,ty=n.y-o.y,l=Math.hypot(tx,ty)||1,px=p.x-ty/l*off*sg,py=p.y+tx/l*off*sg;k?x.lineTo(px,py):x.moveTo(px,py)});x.stroke()}}
+  else{if(s.t==='pass')x.setLineDash([s.w*2.4,s.w*2]);x.beginPath();Q.forEach((p,k)=>k?x.lineTo(p.x,p.y):x.moveTo(p.x,p.y));x.stroke();x.setLineDash([])}}
+ const dx=G.b.x-base.x,dy=G.b.y-base.y,l=Math.hypot(dx,dy)||1,hw=shot?Math.max(off*2.8,h*.42):h*.5,nx=-dy/l*hw,ny=dx/l*hw;
+ x.beginPath();x.moveTo(G.b.x,G.b.y);x.lineTo(base.x+nx,base.y+ny);x.lineTo(base.x-nx,base.y-ny);x.closePath();x.fill()}
 function paint(s){x.lineCap=x.lineJoin='round';x.strokeStyle=x.fillStyle=s.c;x.lineWidth=s.w;x.setLineDash([]);x.beginPath();
  switch(s.t){
  case'pen':s.pts.forEach((p,i)=>i?x.lineTo(p.x,p.y):x.moveTo(p.x,p.y));x.stroke();break;
  case'line':x.moveTo(s.a.x,s.a.y);x.lineTo(s.b.x,s.b.y);x.stroke();break;
- case'arrow':case'pass':case'shot':curved(s);break;
+ case'arrow':case'pass':case'shot':case'dribble':curved(s);break;
  case'circle':x.arc(s.a.x,s.a.y,Math.hypot(s.b.x-s.a.x,s.b.y-s.a.y),0,7);x.stroke();break;
  case'rect':x.strokeRect(s.a.x,s.a.y,s.b.x-s.a.x,s.b.y-s.a.y);break;
  case'zone':x.strokeStyle='#fff';x.setLineDash([s.w*3,s.w*2]);x.lineWidth=2/sc;x.strokeRect(s.a.x,s.a.y,s.b.x-s.a.x,s.b.y-s.a.y);break;
