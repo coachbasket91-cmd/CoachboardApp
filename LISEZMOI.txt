@@ -19,10 +19,13 @@ elle s'installe sur l'écran d'accueil et fonctionne ensuite SANS connexion.
    - Deux doigts : zoom et déplacement. « Zoom zone » : encadrez une zone pour y zoomer.
    - « Doigt = déplacer » : avec un stylet (Apple Pencil), le doigt déplace l'image et le stylet dessine.
    - « Exporter / partager l'image » : ouvre le partage (Photos, Messages, WhatsApp...) avec l'image zoomée et annotée.
+   - Toucher l'image (outil « Main ») : lecture / pause. Double toucher à gauche ou à droite : -10 s / +10 s.
    - Menu « Fichier » : Nouveau, Ouvrir un projet, Enregistrer, Enregistrer sous. Le projet (dessins, séquences, repères) est un fichier « nom.coachboard.json » ; la vidéo n'y est pas incluse : à la réouverture, choisissez la même vidéo.
      Android/Chrome : « Enregistrer » réécrit le même fichier. iPad : la feuille de partage s'ouvre (Fichiers, Google Drive...).
      Un travail non enregistré est conservé automatiquement et proposé à la réouverture.
    - Export des séquences : en arrière-plan (la vidéo affichée n'est pas lue). « Tout exporter » traite toutes les séquences à la suite.
+   - Si une vidéo est lourde : choisissez-la via « Parcourir » (Fichiers) plutôt que Photos, et gardez l'écran allumé pendant le chargement.
+     En cas de fermeture inattendue de l'appli, un message indique la dernière action au prochain lancement.
    - Tenez la tablette en paysage.
 
-MISE À JOUR : remplacez index.html sur GitHub, et changez « coachboard-v1 » en « coachboard-v2 » dans sw.js.
+MISE À JOUR : remplacez index.html et sw.js sur GitHub. Les mises à jour sont ensuite prises en compte au lancement suivant (avec du réseau).
