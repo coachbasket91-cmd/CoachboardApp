@@ -54,7 +54,7 @@ input[type=file]{display:none}
 .hint{color:var(--mute);font-size:12px;margin-left:auto}
 label.btn.on{background:var(--hot);border-color:var(--hot);color:#1a1006;font-weight:600}
 #pname{flex:0 0 auto;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--mute);font-size:13px}
-#fmenu{position:fixed;z-index:20;background:var(--panel);border:1px solid var(--edge);border-radius:10px;padding:6px;display:grid;gap:4px;min-width:210px}#fmenu[hidden],#modal[hidden]{display:none}#fmenu button{text-align:left}
+#fmenu{position:fixed;z-index:20;background:var(--panel);border:1px solid var(--edge);border-radius:10px;padding:6px;display:grid;gap:4px;min-width:210px}#fmenu[hidden],#modal[hidden]{display:none}#fmenu button{text-align:left;white-space:normal}
 #modal{position:fixed;inset:0;background:#000a;display:flex;align-items:center;justify-content:center;z-index:30}
 .mb{background:var(--panel);border:1px solid var(--edge);border-radius:12px;padding:16px;width:min(380px,92%);display:grid;gap:12px}#mbtn{display:flex;gap:8px;flex-wrap:wrap}#mbtn button{flex:1}
 #vload{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#000b;color:#fff;z-index:9;text-align:center;padding:24px;pointer-events:none;font-size:17px}#vload[hidden]{display:none}
@@ -82,7 +82,7 @@ label.btn.on{background:var(--hot);border-color:var(--hot);color:#1a1006;font-we
   <div id="seqp" hidden><div class="ph"><b>Séquences et repères</b><button id="sall">Tout exporter</button><button id="sx">✕</button></div><div id="sl"></div></div><div id="empty"><b>Ouvrez votre vidéo panoramique</b><span>Puis zoomez, dessinez, placez des pions et exportez une image.</span></div></div>
  <div class="bar bot" id="tools"></div>
 </div>
-<div id="fmenu" hidden><button data-f="new">Nouveau</button><button data-f="open">Ouvrir un projet…</button><button data-f="save">Enregistrer</button><button data-f="saveas">Enregistrer sous…</button></div>
+<div id="fmenu" hidden><button data-f="new">Nouveau</button><button data-f="open">Ouvrir un projet…</button><button data-f="save">Enregistrer</button><button data-f="saveas">Enregistrer sous…</button><button data-f="dest" id="fdest">Destination des exports</button></div>
 <input id="pfile" type="file" accept=".json,.coachboard,application/json">
 <div id="modal" hidden><div class="mb"><div id="mmsg"></div><div id="mbtn"></div></div></div>
 <script>
@@ -183,29 +183,28 @@ let tt;
 function toast(m){const e=$('toast');e.textContent=m;e.style.opacity=1;clearTimeout(tt);tt=setTimeout(()=>e.style.opacity=0,5000)}
 function addShape(s){shapes.push(s);markDirty()}
 const animGeom=s=>({a:s.a,c:s.cp,b:s.b});
-let curKey='',seqs=[],exporting=false,cancelExp=false,lastClips=[],vidMeta=null,pendProj=null,projName='Sans titre',fileHandle=null,dirty=false,dt=0;
+let curKey='',seqs=[],exporting=false,cancelExp=false,lastClips=[],expMode='ask',expDir=null,clipMap=new Map(),batchWait=null,savedPrev=0,BATCH=150*1048576,vidMeta=null,pendProj=null,projName='Sans titre',fileHandle=null,dirty=false,dt=0;
 const seqP=$('seqp'),fmt2=t=>fmt(t)+'.'+Math.floor(t%1*10);
 ['pointerdown','pointermove','pointerup','wheel'].forEach(ev=>{seqP.addEventListener(ev,e=>e.stopPropagation());$('doneb').addEventListener(ev,e=>e.stopPropagation())});
 function saveSeq(){try{if(curKey)localStorage.setItem(curKey,JSON.stringify(seqs))}catch(e){}markDirty()}
 function loadSeq(){try{seqs=JSON.parse(localStorage.getItem(curKey)||'[]')}catch(e){seqs=[]}renderSeq()}
 function renderSeq(){const L=$('sl');L.innerHTML='';if(!seqs.length)L.innerHTML='<div class="m" style="padding:10px">Aucune séquence. Placez « Début » et « Fin » sur la vidéo, puis touchez « + Séquence ».</div>';
  seqs.forEach((q,i)=>{const d=document.createElement('div');d.className='si';
-  d.innerHTML='<div class="r"><button data-a="n" style="flex:3;text-align:left"></button><button data-a="x" style="flex:0 0 44px" aria-label="Supprimer">✕</button></div><div class="m">'+fmt2(q.a)+' → '+fmt2(q.b)+' ('+(q.b-q.a).toFixed(1)+' s)</div><div class="r"><button data-a="p">▶ Lire</button><button data-a="e">Exporter</button></div>';
+  d.innerHTML='<div class="r"><button data-a="n" style="flex:3;text-align:left"></button><button data-a="x" style="flex:0 0 44px" aria-label="Supprimer">✕</button></div><div class="m">'+fmt2(q.a)+' → '+fmt2(q.b)+' ('+(q.b-q.a).toFixed(1)+' s)</div><div class="r"><button data-a="p">▶ Lire</button><button data-a="e">Exporter</button></div>'+(clipMap.has(q.a+'|'+q.b)?'<div class="r"><button data-a="s">Partager l’export</button></div>':'');
   d.querySelector('[data-a=n]').textContent=q.n;
   d.onclick=e=>{const a=e.target.dataset&&e.target.dataset.a;if(!a)return;
    if(a==='x'){seqs.splice(i,1);saveSeq();renderSeq()}
    else if(a==='n'){const n=prompt('Nom de la séquence',q.n);if(n){q.n=n;saveSeq();renderSeq()}}
    else if(a==='p'){la=q.a;lb=q.b;loop=true;renderTrack();$('bl').classList.add('on');v.currentTime=q.a;v.play()}
-   else if(a==='e')exportClip(q.a,q.b,q.n)};
+   else if(a==='e')exportClip(q.a,q.b,q.n);
+   else if(a==='s'){const f=clipMap.get(q.a+'|'+q.b);if(f)shareFiles([f])}};
   L.appendChild(d)});renderMk(L);renderTrack()}
 $('slist').onclick=()=>{seqP.hidden=!seqP.hidden;renderSeq()};$('sx').onclick=()=>seqP.hidden=true;
 $('sadd').onclick=()=>{if(!vw)return;if(la==null||lb==null||lb<=la+.2){toast('Placez d’abord « Début » puis « Fin » (Fin après Début).');return}
  seqs.push({n:'Séquence '+(seqs.length+1),a:la,b:lb});saveSeq();seqP.hidden=false;renderSeq();toast('Séquence enregistrée.')};
-$('dx').onclick=()=>{if(exporting)cancelExp=true;$('doneb').hidden=true};
+$('dx').onclick=()=>{if(exporting)cancelExp=true;if(batchWait){const r=batchWait;batchWait=null;r(false)}$('doneb').hidden=true};
 $('sall').onclick=()=>{if(!seqs.length){toast('Aucune séquence à exporter.');return}exportMany(seqs.map(q=>({a:q.a,b:q.b,n:q.n})))};
-$('dsave').onclick=async()=>{if(exporting){cancelExp=true;return}const L=lastClips;if(!L.length)return;
- try{if(navigator.canShare&&navigator.canShare({files:L})){await navigator.share({files:L,title:'Coachboard'});return}}catch(e){if(e.name==='AbortError')return}
- for(const f of L){const a=document.createElement('a');a.href=URL.createObjectURL(f);a.download=f.name;a.click();await new Promise(r=>setTimeout(r,400))}};
+$('dsave').onclick=async()=>{if(batchWait){const ok=await shareFiles(lastClips);if(ok&&batchWait){const r=batchWait;batchWait=null;r(true)}return}if(exporting){cancelExp=true;return}const L=lastClips;if(!L.length)return;if(L[0].saved){$('doneb').hidden=true;return}await shareFiles(L)};
 const exportClip=(a,b,n)=>exportMany([{a,b,n}]);
 function overlay(g,S){g.save();g.setTransform(S.ow/S.w,0,0,S.oh/S.h,-S.x0*S.ow/S.w,-S.y0*S.oh/S.h);const o=x;x=g;try{S.shapes.forEach(paint)}finally{x=o;g.restore()}}
 async function exportMany(list){
@@ -214,41 +213,50 @@ async function exportMany(list){
  const r=vp.getBoundingClientRect(),x0=Math.max(0,-tx/sc),y0=Math.max(0,-ty/sc),x1=Math.min(vw,(r.width-tx)/sc),y1=Math.min(vh,(r.height-ty)/sc),w=x1-x0,h=y1-y0,k=Math.min(1,1280/w),
   S={x0,y0,w,h,ow:Math.round(w*k/2)*2,oh:Math.round(h*k/2)*2,show:showDraw,shapes:JSON.parse(JSON.stringify(shapes))};
  const types=['video/mp4;codecs=avc1.42E01E,mp4a.40.2','video/mp4','video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'],mt=types.find(t=>MediaRecorder.isTypeSupported(t))||'';
- exporting=true;cancelExp=false;lastClips=[];seqP.hidden=true;keepAwake('export',true);setAct('export de '+list.length+' séquence(s)');
+ exporting=true;cancelExp=false;lastClips=[];clipMap.clear();savedPrev=0;seqP.hidden=true;keepAwake('export',true);setAct('export de '+list.length+' séquence(s)');
  $('doneb').hidden=false;$('donet').textContent='Préparation de l’export…';$('dsave').textContent='Annuler';
- let hv=null,ac=null,src=null,failed=0;
+ let hv=null,ac=null,src=null,failed=0,dirH=null;
  try{
+  if(expMode==='dir'&&expDir){try{let p=await expDir.queryPermission({mode:'readwrite'});if(p!=='granted')p=await expDir.requestPermission({mode:'readwrite'});if(p==='granted')dirH=expDir;else toast('Accès au dossier refusé : export via le partage.')}catch(e){logErr(e);toast('Dossier inaccessible : export via le partage.')}}
   hv=document.createElement('video');hv.playsInline=true;hv.preload='auto';hv.setAttribute('playsinline','');hv.style.cssText='position:fixed;left:0;top:0;width:2px;height:2px;opacity:.01;pointer-events:none;z-index:-1';document.body.appendChild(hv);
   try{const AC=window.AudioContext||window.webkitAudioContext;ac=new AC();src=ac.createMediaElementSource(hv);if(ac.resume)ac.resume()}catch(e){ac=null;src=null;hv.muted=true}
   await Promise.race([new Promise(res=>{hv.onloadedmetadata=res;hv.onerror=res;hv.src=v.src;hv.load()}),new Promise(res=>setTimeout(res,15000))]);
   if(!hv.videoWidth)throw new Error('lecture de la vidéo impossible en arrière-plan');
   const used=new Set();
   for(let i=0;i<list.length&&!cancelExp;i++){const q=list[i];let base=(q.n||'sequence').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^\w\-]+/g,'_'),nm=base,z=2;while(used.has(nm))nm=base+'_'+z++;used.add(nm);
-   const f=await renderClip(hv,ac,src,q.a,q.b,nm,S,mt,i,list.length);if(f)lastClips.push(f);else{if(!cancelExp)failed=i+1;break}}
+   const f=await renderClip(hv,ac,src,q.a,q.b,nm,S,mt,i,list.length,dirH);if(!f){if(!cancelExp)failed=i+1;break}
+   lastClips.push(f);if(!f.saved)clipMap.set(q.a+'|'+q.b,f);
+   if(!dirH&&i<list.length-1&&lastClips.reduce((t,x)=>t+x.size,0)>=BATCH){hv.pause();if(await waitBatch()){savedPrev+=lastClips.length;lastClips=[];clipMap.clear()}else break}}
  }catch(e){logErr(e);toast('Export impossible : '+e.message)}
  finally{if(hv){try{hv.pause();hv.removeAttribute('src');hv.load();hv.remove()}catch(e){}}if(ac)try{ac.close()}catch(e){}exporting=false;keepAwake('export',false);setAct('export terminé')}
- if(lastClips.length){const mo=lastClips.reduce((s,f)=>s+f.size,0)/1048576,n=lastClips.length;$('donet').textContent=n+' séquence'+(n>1?'s':'')+' prête'+(n>1?'s':'')+' ('+mo.toFixed(1)+' Mo)'+(cancelExp?' — export interrompu':failed?' — échec à la séquence '+failed:'');$('dsave').textContent='Partager / Enregistrer'}
- else{$('doneb').hidden=true;toast(cancelExp?'Export annulé.':'Export impossible ou bloqué : réessayez.')}}
-async function renderClip(hv,ac,src,a,b,name,S,mt,i,n){
+ const n=lastClips.length,mo=lastClips.reduce((t,f)=>t+f.size,0)/1048576,tail=cancelExp?' — export interrompu':failed?' — échec à la séquence '+(failed+savedPrev):'';
+ if(n&&dirH){$('donet').textContent=n+' séquence'+(n>1?'s':'')+' enregistrée'+(n>1?'s':'')+' dans « '+dirH.name+' » ('+mo.toFixed(1)+' Mo)'+tail;$('dsave').textContent='OK'}
+ else if(n){$('donet').textContent=n+' séquence'+(n>1?'s':'')+' prête'+(n>1?'s':'')+' ('+mo.toFixed(1)+' Mo)'+(savedPrev?' + '+savedPrev+' déjà enregistrée'+(savedPrev>1?'s':''):'')+tail;$('dsave').textContent='Partager / Enregistrer'}
+ else if(savedPrev){$('donet').textContent=savedPrev+' séquence'+(savedPrev>1?'s':'')+' enregistrée'+(savedPrev>1?'s':'')+tail;$('dsave').textContent='OK'}
+ else{$('doneb').hidden=true;toast(cancelExp?'Export annulé.':'Export impossible ou bloqué : réessayez.')}
+ renderSeq()}
+async function renderClip(hv,ac,src,a,b,name,S,mt,i,n,dirH){
  const oc=document.createElement('canvas');oc.width=S.ow;oc.height=S.oh;const g=oc.getContext('2d'),stream=oc.captureStream(30);
- let audio=false,dst=null,wd=0;
+ let audio=false,dst=null,wd=0,wr=null,wq=Promise.resolve(),wfail=null,fname='',bytes=0;const ext=(mt||'video/webm').includes('mp4')?'mp4':'webm';
  const cleanup=()=>{clearInterval(wd);try{if(dst)src.disconnect(dst)}catch(e){}try{stream.getTracks().forEach(t=>t.stop())}catch(e){}oc.width=oc.height=0};
  if(ac&&src){try{dst=ac.createMediaStreamDestination();src.connect(dst);dst.stream.getAudioTracks().forEach(t=>{stream.addTrack(t);audio=true})}catch(e){}}
  let rec;try{rec=new MediaRecorder(stream,mt?{mimeType:mt,videoBitsPerSecond:4e6}:{videoBitsPerSecond:4e6})}catch(e){cleanup();toast('Export impossible : '+e.message);return null}
- const chunks=[];rec.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};const stopped=new Promise(res=>rec.onstop=res);
+ const chunks=[];
+ if(dirH){try{fname=await uniqueName(dirH,name,ext);wr=await(await dirH.getFileHandle(fname,{create:true})).createWritable()}catch(e){cleanup();toast('Dossier inaccessible : '+e.message);return null}}
+ rec.ondataavailable=e=>{if(!e.data.size)return;bytes+=e.data.size;if(wr)wq=wq.then(()=>wr.write(e.data)).catch(x=>{wfail=x});else chunks.push(e.data)};const stopped=new Promise(res=>rec.onstop=res);
  const frame=()=>{g.drawImage(hv,S.x0,S.y0,S.w,S.h,0,0,S.ow,S.oh);if(S.show)overlay(g,S)};
  hv.pause();await seekTo(a,hv);hv.playbackRate=1;rec.start(300);
  const tryPlay=()=>Promise.race([hv.play(),new Promise((_,rej)=>setTimeout(()=>rej(new Error('lecture bloquée')),8000))]);
- try{await tryPlay()}catch(e){hv.muted=true;audio=false;try{await tryPlay()}catch(e2){rec.stop();await stopped;cleanup();return null}}
+ try{await tryPlay()}catch(e){hv.muted=true;audio=false;try{await tryPlay()}catch(e2){rec.stop();await stopped;cleanup();if(wr){try{await wr.abort()}catch(e){}try{await dirH.removeEntry(fname)}catch(e){}}return null}}
  let fin,stall=false,lp=-1,lpt=performance.now();const P=new Promise(res=>fin=res);
  wd=setInterval(()=>{if(hv.currentTime!==lp){lp=hv.currentTime;lpt=performance.now()}else if(performance.now()-lpt>6000){stall=true;fin()}},1000);
  const nxt=fn=>hv.requestVideoFrameCallback?hv.requestVideoFrameCallback(fn):requestAnimationFrame(fn);
  const f=()=>{frame();$('donet').textContent='Export '+(i+1)+'/'+n+' · '+Math.max(0,hv.currentTime-a).toFixed(1)+' / '+(b-a).toFixed(1)+' s';
-  if(hv.currentTime>=b||hv.ended||cancelExp||stall){fin();return}nxt(f)};f();await P;clearInterval(wd);
+  if(hv.currentTime>=b||hv.ended||cancelExp||stall||wfail){fin();return}nxt(f)};f();await P;clearInterval(wd);
  hv.pause();for(let j=0;j<10&&!cancelExp&&!stall;j++){frame();await new Promise(r=>setTimeout(r,35))}
  rec.stop();await stopped;cleanup();
+ if(wr){await wq;if(wfail||cancelExp||stall){try{await wr.abort()}catch(e){}try{await dirH.removeEntry(fname)}catch(e){}if(wfail)toast('Écriture impossible : '+(wfail.message||wfail));return null}await wr.close();return{name:fname,size:bytes,saved:true}}
  if(cancelExp||stall)return null;
- const ext=(mt||'video/webm').includes('mp4')?'mp4':'webm';
  return new File([new Blob(chunks,{type:mt||'video/webm'})],name+'.'+ext,{type:(mt||'video/webm').split(';')[0]})}
 
 /* ---- barre de navigation (OSD) ---- */
@@ -382,7 +390,7 @@ $('pfile').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(f)l
 async function newProject(){if(exporting){toast('Opération en cours : patientez.');return}if(!await confirmDiscard())return;
  shapes=[];seqs=[];marks=[];pendProj=null;fresh();saveSeq();saveMk();dirty=false;clearDraft();updName();renderSeq();renderTrack();draw();$('vlab').classList.remove('on');toast('Nouveau projet.')}
 $('fbtn').onclick=()=>{if(!fmenu.hidden){fmenu.hidden=true;return}const r=$('fbtn').getBoundingClientRect();fmenu.style.left=Math.max(4,r.left)+'px';fmenu.style.top=(r.bottom+4)+'px';fmenu.hidden=false};
-fmenu.onclick=e=>{const a=e.target.dataset.f;if(!a)return;fmenu.hidden=true;({new:newProject,open:openProject,save:()=>saveProject(false),saveas:()=>saveProject(true)})[a]()};
+fmenu.onclick=e=>{const a=e.target.dataset.f;if(!a)return;fmenu.hidden=true;({new:newProject,open:openProject,save:()=>saveProject(false),saveas:()=>saveProject(true),dest:chooseDest})[a]()};
 addEventListener('pointerdown',e=>{if(!fmenu.hidden&&!fmenu.contains(e.target)&&e.target!==$('fbtn'))fmenu.hidden=true},true);
 addEventListener('beforeunload',e=>{if(dirty){flushDraft();e.preventDefault();e.returnValue=''}});
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&dirty)flushDraft()});
@@ -391,6 +399,24 @@ updName();
  if(was)await ask('L’appli s’est fermée de façon inattendue (manque de mémoire probable).\nDernière action : '+(localStorage.getItem('cbact')||'inconnue')+'.\nAstuce : choisissez la vidéo via « Parcourir » (Fichiers) et exportez peu de séquences à la fois si la vidéo est très lourde.',['OK']);
  try{const d=localStorage.getItem('cbdraft');if(!d)return;const p=JSON.parse(d),r=await ask('Un travail non enregistré a été retrouvé (« '+(p.name||'Sans titre')+' »). Le reprendre ?',['Reprendre','Ignorer']);if(r===0){p.restored=true;useProj(p,null)}else clearDraft()}catch(e){}})();
 document.addEventListener('visibilitychange',()=>{try{localStorage.setItem('cbalive',document.hidden?'0':'1')}catch(e){}});addEventListener('pagehide',()=>{try{localStorage.setItem('cbalive','0')}catch(e){}});
+
+/* ---- destination des exports : dossier choisi ou partage, lots ---- */
+const idb=()=>new Promise((res,rej)=>{const r=indexedDB.open('cb',1);r.onupgradeneeded=()=>r.result.createObjectStore('h');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)});
+async function idbSet(k,v){try{const d=await idb();await new Promise((res,rej)=>{const t=d.transaction('h','readwrite');t.objectStore('h').put(v,k);t.oncomplete=res;t.onerror=()=>rej(t.error)})}catch(e){logErr(e)}}
+async function idbGet(k){try{const d=await idb();return await new Promise((res,rej)=>{const q=d.transaction('h').objectStore('h').get(k);q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error)})}catch(e){return null}}
+function updDest(){$('fdest').textContent='Exports : '+(expMode==='dir'&&expDir?'dossier « '+expDir.name+' »':'partage (à chaque fois)')}
+async function chooseDest(){
+ const cur=expMode==='dir'&&expDir?'Dossier actuel : « '+expDir.name+' ».':'Actuellement : demander à chaque fois (partage).';
+ if(!window.showDirectoryPicker){await ask('Destination des exports\n'+cur+'\nLe choix d’un dossier n’est pas disponible sur ce navigateur (Safari sur iPad, ou Chrome Android selon la version). Les exports passent par le partage : Fichiers, disque externe, Google Drive…',['OK']);return}
+ const r=await ask('Destination des exports\n'+cur,['Choisir un dossier…','Demander à chaque fois','Annuler']);
+ if(r===0){try{const h=await showDirectoryPicker({mode:'readwrite',id:'coachboard'});expDir=h;expMode='dir';await idbSet('dir',h);try{localStorage.setItem('cbexpmode','dir')}catch(e){}toast('Les exports seront enregistrés dans « '+h.name+' ».')}catch(e){if(e.name!=='AbortError')toast('Dossier refusé : '+e.message)}}
+ else if(r===1){expMode='ask';try{localStorage.setItem('cbexpmode','ask')}catch(e){}toast('Les exports passent par le partage.')}
+ updDest()}
+async function uniqueName(d,base,ext){let n=base+'.'+ext,k=2;for(;;){try{await d.getFileHandle(n);n=base+'_'+k+'.'+ext;k++}catch(e){return n}}}
+async function shareFiles(L){try{if(navigator.canShare&&navigator.canShare({files:L})){await navigator.share({files:L,title:'Coachboard'});return true}}catch(e){if(e.name==='AbortError')return false}
+ for(const f of L){const a=document.createElement('a');a.href=URL.createObjectURL(f);a.download=f.name;a.click();await new Promise(r=>setTimeout(r,400))}return true}
+function waitBatch(){return new Promise(res=>{batchWait=res;const mo=lastClips.reduce((s,f)=>s+f.size,0)/1048576;$('donet').textContent='Lot prêt : '+lastClips.length+' séquence'+(lastClips.length>1?'s':'')+' ('+mo.toFixed(0)+' Mo). Enregistrez-le pour continuer.';$('dsave').textContent='Enregistrer ce lot';$('doneb').hidden=false})}
+(async()=>{try{expMode=localStorage.getItem('cbexpmode')||'ask';if(expMode==='dir'){expDir=await idbGet('dir');if(!expDir)expMode='ask'}}catch(e){expMode='ask'}updDest()})();
 
 if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
 </script></body></html>
